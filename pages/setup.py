@@ -1,5 +1,7 @@
 """
 Setup page - allows users to configure the image directory and other application settings.
+TODO: Add default margin sizes and float strategy
+TODO: Add section definition UI
 """
 import dash
 from dash import callback, dcc, html, Input, Output, State, no_update
@@ -115,6 +117,77 @@ def layout():
                     )
                 ], gap="sm")
             ], p="lg", withBorder=True, shadow="sm"),
+            
+            # Default Adjustments Section
+            dmc.Paper([
+                dmc.Title("Default Adjustments", order=3, mb="md"),
+                
+                dmc.Stack([
+                    dmc.Text(
+                        "Configure default settings for page processing and layout.",
+                        size="sm",
+                        c="dimmed",
+                        mb="xs"
+                    ),
+                    
+                    dmc.SimpleGrid(
+                        cols=2,
+                        spacing="md",
+                        children=[
+                            dmc.NumberInput(
+                                label="Page Aspect Ratio",
+                                description="Width / Height ratio of final pages (e.g., 0.75 for portrait)",
+                                placeholder="0.75",
+                                value=0.75,
+                                min=0.1,
+                                max=10,
+                                step=0.01,
+                                decimalScale=2,
+                                id="setup-aspect-ratio-input",
+                            ),
+                            
+                            dmc.Select(
+                                label="Vertical Float",
+                                description="Vertical alignment of content when it doesn't span full page height",
+                                placeholder="Select alignment",
+                                value="Center",
+                                data=[
+                                    {"value": "Top", "label": "Top"},
+                                    {"value": "Center", "label": "Center"},
+                                    {"value": "Bottom", "label": "Bottom"}
+                                ],
+                                id="setup-vertical-float-select",
+                            ),
+                            
+                            dmc.NumberInput(
+                                label="Left & Right Margin Size",
+                                description="Total horizontal margin as percentage of page width (split equally)",
+                                placeholder="5",
+                                value=5,
+                                min=0,
+                                max=50,
+                                step=0.5,
+                                decimalScale=1,
+                                suffix="%",
+                                id="setup-horizontal-margin-input",
+                            ),
+                            
+                            dmc.NumberInput(
+                                label="Top & Bottom Margin Size",
+                                description="Total vertical margin as percentage of page height (split equally)",
+                                placeholder="5",
+                                value=5,
+                                min=0,
+                                max=50,
+                                step=0.5,
+                                decimalScale=1,
+                                suffix="%",
+                                id="setup-vertical-margin-input",
+                            ),
+                        ]
+                    )
+                ], gap="md")
+            ], p="lg", withBorder=True, shadow="sm", mt="xl"),
             
             # Section Definition Section
             dmc.Paper([
