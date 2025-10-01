@@ -9,20 +9,62 @@ import plotly.express as px
 from dash import dcc
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
+import json
 
 # Configuration
 logo = "https://github.com/user-attachments/assets/c1ff143b-4365-4fd1-880f-3e97aab5c302"
-pages_dir = r"C:\Users\adiad\Downloads\jpgs"
 page_viewer_height = 600
-
-# Get list of pages
-pages = [p for p in os.listdir(pages_dir) if p.endswith(".jpg")]
-pages = [""] + pages  # add empty option
-pages.sort()
 
 # Setup data directory
 script_dir = os.path.dirname(os.path.abspath(__file__))
 data_dir = os.path.join(script_dir, "data")
+
+def get_config_file_path():
+    """Get the path to the configuration file."""
+    config_path = os.path.join(script_dir, "config.json")
+    return config_path
+
+def load_config():
+    """Load configuration from file, return defaults if file doesn't exist."""
+    config_path = get_config_file_path()
+    default_config = {
+        "images_directory": r"C:\Users\adiad\Downloads\jpgs",  # Fallback to original path
+        "app_name": "Scan Post Processing"
+    }
+    
+    try:
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                return {**default_config, **config}
+    except Exception:
+        pass
+    
+    return default_config
+
+def get_pages_directory():
+    """Get the configured pages directory."""
+    config = load_config()
+    return config.get("images_directory", r"C:\Users\adiad\Downloads\jpgs")
+
+def get_pages_list():
+    """Get list of pages from the configured directory."""
+    pages_dir = get_pages_directory()
+    
+    if not pages_dir or not os.path.exists(pages_dir):
+        return [""]  # Return empty list if directory doesn't exist
+    
+    try:
+        pages = [p for p in os.listdir(pages_dir) if p.lower().endswith(('.jpg', '.jpeg'))]
+        pages = [""] + pages  # add empty option
+        pages.sort()
+        return pages
+    except Exception:
+        return [""]
+
+# Get list of pages (dynamic based on configuration)
+pages_dir = get_pages_directory()
+pages = get_pages_list()
 
 def create_empty_figure():
     """Create an empty figure for when no page is selected."""
@@ -51,12 +93,37 @@ def create_page_select(page_context):
     Args:
         page_context: String identifier for the page (e.g., 'viewer', 'editor')
     """
+    current_pages = get_pages_list()
+    
+    if len(current_pages) <= 1:  # Only empty option or no options
+        return dmc.Stack([
+            dmc.Select(
+                label="Jump to page",
+                placeholder="No images found",
+                id=f"{page_context}-page-select",
+                value="",
+                data=[{"value": "", "label": "No images found"}],
+                w=140,
+                mb=5,
+                disabled=True
+            ),
+            dmc.Anchor(
+                "Configure in Setup",
+                href="/setup",
+                size="xs",
+                c="blue"
+            )
+        ], gap=2)
+    
+    # Start with first non-empty page if available
+    initial_value = current_pages[1] if len(current_pages) > 1 else current_pages[0]
+    
     return dmc.Select(
         label="Jump to page",
         placeholder="Select one",
         id=f"{page_context}-page-select",
-        value=pages[0],
-        data=[{"value": page, "label": page} for page in pages],
+        value=initial_value,
+        data=[{"value": page, "label": page} for page in current_pages],
         w=140,
         mb=10,
     )
@@ -110,8 +177,9 @@ def create_page_navigation():
 
 def get_image_path(page, step):
     """Get the image path for a given page and processing step."""
+    pages_directory = get_pages_directory()
     if step == 1:
-        return os.path.join(pages_dir, page)
+        return os.path.join(pages_directory, page)
     elif step == 2:
         return os.path.join(data_dir, "2_rotate", page)
     elif step == 3:
@@ -123,19 +191,51 @@ def get_image_path(page, step):
     elif step == 6:
         return os.path.join(data_dir, "6_final", page)
     else:
-        return os.path.join(pages_dir, page)
+        return os.path.join(pages_directory, page)
+
+def create_error_figure(message="Configuration required"):
+    """Create an error figure with a message."""
+    error_fig = px.imshow(np.ones((page_viewer_height, int(8.5/11*page_viewer_height), 3), dtype=np.uint8)*240)
+    error_fig.update_layout(
+        margin=dict(l=0, r=0, t=0, b=0), 
+        height=page_viewer_height,
+        annotations=[
+            dict(
+                text=message,
+                xref="paper", yref="paper",
+                x=0.5, y=0.5,
+                xanchor="center", yanchor="middle",
+                font=dict(size=16, color="red"),
+                showarrow=False
+            )
+        ]
+    )
+    error_fig.update_xaxes(showticklabels=False, showline=False)
+    error_fig.update_yaxes(showticklabels=False, showline=False)
+    return error_fig
 
 def create_page_figure(page, step=0, show_bboxes=False):
     """Create a plotly figure for displaying a page image."""
     if not isinstance(page, str) or not page:
         return create_empty_figure()
     
+    # Check if pages directory is configured and exists
+    pages_directory = get_pages_directory()
+    if not pages_directory or not os.path.exists(pages_directory):
+        return create_error_figure("Please configure image directory in Setup")
+    
     img_path = get_image_path(page, step)
     
     if not os.path.exists(img_path):
-        return create_empty_figure()
+        if step == 1:  # Original image should exist
+            return create_error_figure(f"Image not found: {page}")
+        else:
+            return create_empty_figure()  # Processed images might not exist yet
     
-    image = Image.open(img_path)
+    try:
+        image = Image.open(img_path)
+    except Exception as e:
+        return create_error_figure(f"Error loading image: {str(e)}")
     fig = px.imshow(np.asarray(image))
     fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=page_viewer_height)
     fig.update_xaxes(
@@ -463,8 +563,18 @@ def process_image_with_manual_adjustments(page, manual_adjustments):
     import math
     
     # Load original image
-    original_path = os.path.join(pages_dir, page)
-    img = Image.open(original_path)
+    pages_directory = get_pages_directory()
+    if not pages_directory or not os.path.exists(pages_directory):
+        raise ValueError("Image directory not configured or does not exist")
+    
+    original_path = os.path.join(pages_directory, page)
+    if not os.path.exists(original_path):
+        raise ValueError(f"Image file not found: {page}")
+    
+    try:
+        img = Image.open(original_path)
+    except Exception as e:
+        raise ValueError(f"Error loading image: {str(e)}")
     
     # Apply rotation if specified
     rotation = manual_adjustments.get("rotation", 0)

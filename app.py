@@ -14,6 +14,26 @@ app = Dash(__name__, use_pages=True, suppress_callback_exceptions=True)
 
 nav_bar_content = dmc.Stack([
     dmc.Tooltip(
+        label="Setup & Configuration",
+        children=dmc.Anchor(
+            DashIconify(icon="tabler:settings", width=24),
+            href="/setup",
+            underline=False,
+            style={
+                "padding": "12px",
+                "borderRadius": "8px",
+                "display": "flex",
+                "alignItems": "center",
+                "justifyContent": "center",
+                "color": "#666",
+                "width": "48px",
+                "height": "48px"
+            },
+            id="nav-setup"
+        ),
+        position="right"
+    ),
+    dmc.Tooltip(
         label="Automated Result Viewer",
         children=dmc.Anchor(
             DashIconify(icon="tabler:eye", width=24),
@@ -87,14 +107,16 @@ app.layout = dmc.MantineProvider([
 @callback(
     [Output("nav-viewer", "style"),
      Output("nav-editor", "style"),
+     Output("nav-setup", "style"),
      Output("nav-viewer", "href"),
-     Output("nav-editor", "href")],
+     Output("nav-editor", "href"),
+     Output("nav-setup", "href")],
     [Input("url", "pathname"),
      Input("shared-page-state", "data")]
 )
 def update_navigation_styles(pathname, current_page):
     """Update navigation link styles and hrefs based on current page."""
-    viewer_style = {
+    base_style = {
         "padding": "12px",
         "borderRadius": "8px",
         "display": "flex",
@@ -104,42 +126,36 @@ def update_navigation_styles(pathname, current_page):
         "height": "48px"
     }
     
-    editor_style = {
-        "padding": "12px",
-        "borderRadius": "8px",
-        "display": "flex",
-        "alignItems": "center",
-        "justifyContent": "center",
-        "width": "48px",
-        "height": "48px"
+    active_style = {
+        "backgroundColor": "#e3f2fd",
+        "color": "#1976d2"
     }
     
+    inactive_style = {
+        "backgroundColor": "transparent",
+        "color": "#666"
+    }
+    
+    # Initialize all styles as inactive
+    viewer_style = {**base_style, **inactive_style}
+    editor_style = {**base_style, **inactive_style}
+    setup_style = {**base_style, **inactive_style}
+    
+    # Set active style based on pathname
     if pathname == "/editor":
-        # Editor is active
-        editor_style.update({
-            "backgroundColor": "#e3f2fd",
-            "color": "#1976d2"
-        })
-        viewer_style.update({
-            "backgroundColor": "transparent",
-            "color": "#666"
-        })
+        editor_style.update(active_style)
+    elif pathname == "/setup":
+        setup_style.update(active_style)
     else:
         # Viewer is active (default)
-        viewer_style.update({
-            "backgroundColor": "#e3f2fd",
-            "color": "#1976d2"
-        })
-        editor_style.update({
-            "backgroundColor": "transparent",
-            "color": "#666"
-        })
+        viewer_style.update(active_style)
     
     # Create hrefs that preserve the current page
     viewer_href = "/"
     editor_href = "/editor"
+    setup_href = "/setup"
     
-    return viewer_style, editor_style, viewer_href, editor_href
+    return viewer_style, editor_style, setup_style, viewer_href, editor_href, setup_href
 
 if __name__ == "__main__":
     app.run(debug=True)

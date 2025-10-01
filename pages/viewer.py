@@ -180,3 +180,37 @@ def update_viewer_page(page, step, triggered_id):
 
     # return empty figure if no valid page is selected
     return create_empty_figure(), info_card, False
+
+
+@callback(
+    [Output("viewer-page-select", "data", allow_duplicate=True),
+     Output("viewer-page-select", "value", allow_duplicate=True)],
+    [Input("shared-page-state", "data"),
+     Input("url", "pathname")],
+    prevent_initial_call=True
+)
+def update_page_selector(shared_page, pathname):
+    """Update page selector options when configuration changes."""
+    from dash import no_update
+    from components import get_pages_list
+    
+    # Only update if we're on the viewer page
+    if pathname != "/":
+        return no_update, no_update
+    
+    # Refresh the pages list from current configuration
+    current_pages = get_pages_list()
+    
+    if len(current_pages) <= 1:  # Only empty option or no options
+        return [{"value": "", "label": "No images found"}], ""
+    
+    page_data = [{"value": page, "label": page} for page in current_pages]
+    
+    # Set value to shared page if it exists in the list, otherwise use first non-empty page
+    selected_page = ""
+    if shared_page and shared_page in current_pages:
+        selected_page = shared_page
+    elif len(current_pages) > 1:  # Has pages beyond empty option
+        selected_page = current_pages[1]  # First actual page (index 0 is empty)
+    
+    return page_data, selected_page
