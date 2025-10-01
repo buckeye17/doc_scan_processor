@@ -1,0 +1,5 @@
+easyocr
+notebook
+pandas
+plotly
+tqdm
