@@ -1,3 +1,4 @@
+dash-ag-grid
 easyocr
 notebook
 pandas
