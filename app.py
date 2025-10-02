@@ -14,9 +14,9 @@ app = Dash(__name__, use_pages=True, suppress_callback_exceptions=True)
 
 nav_bar_content = dmc.Stack([
     dmc.Tooltip(
-        label="Setup & Configuration",
+        label="Setup & Process Images",
         children=dmc.Anchor(
-            DashIconify(icon="tabler:settings", width=24),
+            DashIconify(icon="fluent:image-copy-24-filled", width=24),
             href="/setup",
             underline=False,
             style={
@@ -36,7 +36,7 @@ nav_bar_content = dmc.Stack([
     dmc.Tooltip(
         label="Automated Result Viewer",
         children=dmc.Anchor(
-            DashIconify(icon="tabler:eye", width=24),
+            DashIconify(icon="ix:eye-filled", width=24),
             href="/",
             underline=False,
             style={
@@ -57,7 +57,7 @@ nav_bar_content = dmc.Stack([
     dmc.Tooltip(
         label="Manual Result Editor",
         children=dmc.Anchor(
-            DashIconify(icon="tabler:edit", width=24),
+            DashIconify(icon="fluent:image-edit-16-filled", width=24),
             href="/editor",
             underline=False,
             style={

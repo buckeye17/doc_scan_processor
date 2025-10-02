@@ -124,7 +124,7 @@ current_config = load_config()
 def layout():
     return dmc.Container([
         dmc.Stack([
-            dmc.Title("Book Setup", order=1, mb="lg"),
+            dmc.Title("Image Processor", order=1, mb="lg"),
             
             # Page Import Section
             dmc.Paper([
