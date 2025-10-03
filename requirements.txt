@@ -1,9 +1,12 @@
 dash-ag-grid
+dash-iconify
+dash-mantine-components
 easyocr
 notebook
 opencv-python
 pandas
 pillow
 plotly
+scikit-optimize
 scipy
 tqdm

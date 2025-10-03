@@ -14,6 +14,12 @@ from tqdm import tqdm
 import json
 import threading
 import time
+import plotly.graph_objects as go
+from skopt import gp_minimize
+from skopt.space import Real
+
+# Debug mode: Set to True to generate projection profile plots for each image
+DEBUG_MODE = False
 
 
 class ProgressState:
@@ -158,25 +164,29 @@ def mkdir(path):
     os.makedirs(path)
 
 
-def projection_profile_method(image, delta=0.1, limit=15):
+def projection_profile_method(image, delta=0.1, limit=15, return_debug_data=False):
     """
     Detects the skew angle of a preprocessed (binary) image using the
-    Projection Profile Method.
+    Projection Profile Method with Bayesian optimization.
 
     Args:
         image: The binary input image (text should be white, background black).
-        delta: The step size for angle search (in degrees).
+        delta: Not used (kept for API compatibility).
         limit: The range of angles to search (e.g., limit=15 searches from -15 to +15).
+        return_debug_data: If True, returns (best_angle, angles_list, scores_list) for debugging.
 
     Returns:
-        The estimated skew angle in degrees.
+        If return_debug_data is False: The estimated skew angle in degrees.
+        If return_debug_data is True: Tuple of (best_angle, angles_list, scores_list).
     """
-    best_angle = 0
-    max_score = -1
+    # Store evaluated angles and scores for debug plotting
+    evaluated_angles = []
+    evaluated_scores = []
     
-    # Iterate through a range of angles
-    angles = np.arange(-limit, limit + delta, delta)
-    for angle in angles:
+    # Define the objective function (negative because gp_minimize minimizes)
+    def objective(angle_params):
+        angle = angle_params[0]
+        
         # Rotate the image
         rotated = rotate(image, angle, reshape=False, order=0)
         
@@ -187,12 +197,99 @@ def projection_profile_method(image, delta=0.1, limit=15):
         # Here, we use the sum of squared differences of adjacent profile values
         score = np.sum((projection[1:] - projection[:-1]) ** 2)
         
-        # Update the best angle if the current score is higher
-        if score > max_score:
-            max_score = score
-            best_angle = angle
-            
+        # Store for debug plotting
+        evaluated_angles.append(angle)
+        evaluated_scores.append(score)
+        
+        # Return negative score because gp_minimize minimizes
+        return -score
+    
+    # Define the search space
+    space = [Real(-limit, limit, name='angle')]
+    
+    # Run Bayesian optimization
+    # n_calls: number of evaluations (reduced from ~300 in brute force)
+    # n_random_starts: initial random evaluations before using the model
+    # random_state: for reproducibility
+    result = gp_minimize(
+        objective,
+        space,
+        n_calls=30,  # Much fewer evaluations than brute force
+        n_random_starts=10,
+        random_state=42,
+        verbose=False
+    )
+    
+    best_angle = result.x[0]
+    
+    if return_debug_data:
+        # Sort by angle for better visualization
+        sorted_indices = np.argsort(evaluated_angles)
+        sorted_angles = [evaluated_angles[i] for i in sorted_indices]
+        sorted_scores = [evaluated_scores[i] for i in sorted_indices]
+        return best_angle, sorted_angles, sorted_scores
     return best_angle
+
+
+def create_debug_plot(angles, scores, best_angle, page_name, output_path):
+    """
+    Create and save a Plotly figure showing projection profile scores vs angles.
+    
+    Args:
+        angles: List of angles tested
+        scores: List of corresponding projection profile scores
+        best_angle: The detected optimal angle
+        page_name: Name of the page being processed
+        output_path: Full path where the HTML figure should be saved
+    """
+    fig = go.Figure()
+    
+    # Add the main trace for all scores
+    fig.add_trace(go.Scatter(
+        x=angles,
+        y=scores,
+        mode='lines+markers',
+        name='Projection Profile Score',
+        line=dict(color='blue', width=2),
+        marker=dict(size=4)
+    ))
+    
+    # Highlight the best angle
+    best_score = scores[angles.index(best_angle)]
+    fig.add_trace(go.Scatter(
+        x=[best_angle],
+        y=[best_score],
+        mode='markers',
+        name=f'Best Angle: {best_angle:.2f}°',
+        marker=dict(color='red', size=12, symbol='star')
+    ))
+    
+    # Update layout
+    fig.update_layout(
+        title=f'Projection Profile Analysis - {page_name}',
+        xaxis_title='Angle (degrees)',
+        yaxis_title='Projection Profile Score',
+        hovermode='x unified',
+        showlegend=True,
+        template='plotly_white',
+        width=1000,
+        height=600
+    )
+    
+    # Add annotation for the best angle
+    fig.add_annotation(
+        x=best_angle,
+        y=best_score,
+        text=f'{best_angle:.2f}°',
+        showarrow=True,
+        arrowhead=2,
+        arrowcolor='red',
+        ax=0,
+        ay=-40
+    )
+    
+    # Save as HTML file
+    fig.write_html(output_path)
 
 
 def float_img_to_top(img, target_height):
@@ -341,6 +438,11 @@ def process_images_batch(input_pages_dir, output_dir, chapters, desired_aspect_r
     final_subdir = os.path.join(output_dir, "6_final")
     mkdir(final_subdir)
     
+    # Create debug directory if debug mode is enabled
+    if DEBUG_MODE:
+        debug_subdir = os.path.join(output_dir, "debug_plots")
+        mkdir(debug_subdir)
+    
     if progress_state:
         progress_state.complete_step("create_dirs")
     
@@ -418,7 +520,15 @@ def process_images_batch(input_pages_dir, output_dir, chapters, desired_aspect_r
                 _, binary_image = cv2.threshold(image_cv, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
                 
                 # determine the skew angle using projection profile method
-                vertical_angle = projection_profile_method(binary_image)
+                if DEBUG_MODE:
+                    vertical_angle, angles_list, scores_list = projection_profile_method(binary_image, return_debug_data=True)
+                    # Create debug plot
+                    page_base = os.path.splitext(page)[0]
+                    debug_plot_path = os.path.join(output_dir, "debug_plots", f"{page_base}_projection_profile.html")
+                    create_debug_plot(angles_list, scores_list, vertical_angle, page, debug_plot_path)
+                else:
+                    vertical_angle = projection_profile_method(binary_image)
+                
                 if page in df.index:
                     df.at[page, "angle"] = vertical_angle
                 
