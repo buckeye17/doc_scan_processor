@@ -14,9 +14,11 @@ from tqdm import tqdm
 import json
 import threading
 import time
+import warnings
 import plotly.graph_objects as go
 from skopt import gp_minimize
 from skopt.space import Real
+import torch
 
 # Debug mode: Set to True to generate projection profile plots for each image
 DEBUG_MODE = False
@@ -144,9 +146,16 @@ class ProgressState:
             json.dump(state, f)
     
     def get(self):
-        """Get current progress state."""
+        """Get current progress state, updating elapsed times for active steps."""
         with self.lock:
-            return self._read_state()
+            state = self._read_state()
+            # Update elapsed times for all active steps
+            if "steps" in state:
+                current_time = time.time()
+                for step in state["steps"]:
+                    if step.get("status") == "active" and "start_time" in step:
+                        step["elapsed_time"] = current_time - step["start_time"]
+            return state
     
     def clear(self):
         """Clear progress state."""
@@ -202,7 +211,10 @@ def projection_profile_method(image, delta=0.1, limit=15, return_debug_data=Fals
         evaluated_scores.append(score)
         
         # Return negative score because gp_minimize minimizes
-        return -score
+        # Suppress overflow warning when negating very large scores
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=RuntimeWarning, message='overflow encountered in scalar negative')
+            return -score
     
     # Define the search space
     space = [Real(-limit, limit, name='angle')]
@@ -357,7 +369,6 @@ def process_images_batch(input_pages_dir, output_dir, chapters, desired_aspect_r
     
     # Create a list of text pages for processing
     pages = []
-    page_is_first_or_last_in_chapter = []
     
     # Get all JPG files from input directory
     all_jpg_files = sorted([f for f in os.listdir(input_pages_dir) if f.lower().endswith(('.jpg', '.jpeg'))])
@@ -388,10 +399,9 @@ def process_images_batch(input_pages_dir, output_dir, chapters, desired_aspect_r
             
             chapter_pages = all_jpg_files[start_idx:end_idx + 1]
             if chapter_pages:
-                page_is_first_or_last_in_chapter.extend([chapter_pages[0], chapter_pages[-1]])
+                # All text pages should be analyzed
                 pages.extend(chapter_pages)
-                # Count pages that will be analyzed (excluding first/last of each chapter)
-                text_analysis_pages += len([p for p in chapter_pages if p not in [chapter_pages[0], chapter_pages[-1]]])
+                text_analysis_pages += len(chapter_pages)
         
         # Count all pages for processing
         start_idx = all_jpg_files.index(chapter["start"]) if chapter["start"] in all_jpg_files else 0
@@ -407,7 +417,8 @@ def process_images_batch(input_pages_dir, output_dir, chapters, desired_aspect_r
     if progress_state:
         progress_state.add_step("ocr_init", "Initializing OCR reader...", "text")
     
-    reader = easyocr.Reader(["en"], gpu=False)  # Use GPU if available
+    gpu_available = torch.cuda.is_available() if 'torch' in globals() else False
+    reader = easyocr.Reader(["en"], gpu=gpu_available)  # Use GPU if available
     
     if progress_state:
         progress_state.complete_step("ocr_init")
@@ -448,7 +459,7 @@ def process_images_batch(input_pages_dir, output_dir, chapters, desired_aspect_r
     
     # Step 3: Analyze text width (if there are text pages to analyze)
     if text_analysis_pages > 0 and progress_state:
-        progress_state.add_step("text_analysis", f"Analyzing text width across {text_analysis_pages} pages...", "progress")
+        progress_state.add_step("text_analysis", f"Finding all text regions across {text_analysis_pages} pages...", "progress")
         progress_state.update_step("text_analysis", current=0, total=text_analysis_pages)
     
     min_width = float('inf')
@@ -456,9 +467,6 @@ def process_images_batch(input_pages_dir, output_dir, chapters, desired_aspect_r
     analyzed_count = 0
     
     for page in df.index:
-        if page in page_is_first_or_last_in_chapter:
-            continue
-        
         # Quick text detection just for sizing
         result = reader.readtext(os.path.join(input_pages_dir, page))
         
@@ -490,7 +498,7 @@ def process_images_batch(input_pages_dir, output_dir, chapters, desired_aspect_r
     
     # Step 4: Process all images
     if progress_state:
-        progress_state.add_step("image_processing", f"Processing {total_processing_pages} images...", "progress")
+        progress_state.add_step("image_processing", f"Editing {total_processing_pages} images...", "progress")
         progress_state.update_step("image_processing", current=0, total=total_processing_pages)
     
     processed_count = 0
