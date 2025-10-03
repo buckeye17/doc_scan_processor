@@ -9,6 +9,13 @@ import dash_ag_grid as dag
 import os
 import json
 from pathlib import Path
+import sys
+import threading
+import tempfile
+
+# Add parent directory to path to import batch_processor
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from batch_processor import process_images_batch, ProgressState
 
 # Register this page
 dash.register_page(__name__, path="/setup", title="Setup")
@@ -376,10 +383,56 @@ def layout():
                     ], gap="sm", mt="md"),
                 ], gap="md")
             ], p="lg", withBorder=True, shadow="sm", mt="xl"),
+            
+            # Process Images Section
+            dmc.Paper([
+                dmc.Title("Process Images", order=3, mb="md"),
+                
+                dmc.Stack([
+                    dmc.Text(
+                        "Batch process all images according to the defined chapters and adjustments.",
+                        size="sm",
+                        c="dimmed",
+                        mb="xs"
+                    ),
+                    
+                    dmc.TextInput(
+                        label="Output Directory",
+                        placeholder="C:\\Users\\YourName\\Documents\\ProcessedImages",
+                        value="",
+                        id="setup-output-directory-input",
+                        description="Directory where processed images will be saved",
+                    ),
+                    
+                    dmc.Button(
+                        "Start Batch Processing",
+                        id="setup-batch-process-button",
+                        leftSection=DashIconify(icon="tabler:play", width=16),
+                        color="blue",
+                        size="md",
+                        mt="md",
+                    ),
+                    
+                    # Processing progress container (will be dynamically populated)
+                    dmc.Box(
+                        id="setup-processing-progress",
+                        children=[],  # Will be populated with progress steps by callback
+                        style={"display": "none"}
+                    ),
+                    
+                    # Processing status message
+                    dmc.Box(
+                        id="setup-processing-status",
+                        children="",  # Will be populated by callback
+                    )
+                ], gap="md")
+            ], p="lg", withBorder=True, shadow="sm", mt="xl"),
         ], gap="md"),
         
         # Hidden stores for state management
-        dcc.Store(id="setup-config-store", data=current_config)
+        dcc.Store(id="setup-config-store", data=current_config),
+        dcc.Store(id="setup-processing-active", data=False),
+        dcc.Interval(id="setup-progress-interval", interval=1000, disabled=True)  # Check progress every 1 second
         
     ], size="xl", py="lg")
 
@@ -792,3 +845,233 @@ def update_chapters_on_directory_change(directory_path, current_config):
             return [updated_chapter], updated_column_defs, updated_config
     
     return no_update, updated_column_defs, no_update
+
+
+# Global variable to store progress state file path
+_progress_state_file = os.path.join(tempfile.gettempdir(), "batch_processing_progress.json")
+
+
+def run_batch_processing_thread(input_pages_dir, output_dir, chapters, desired_aspect_ratio, progress_state):
+    """Run batch processing in a background thread."""
+    try:
+        process_images_batch(
+            input_pages_dir=input_pages_dir,
+            output_dir=output_dir,
+            chapters=chapters,
+            desired_aspect_ratio=desired_aspect_ratio,
+            progress_state=progress_state
+        )
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        progress_state.set_error(f"Error: {str(e)}")
+
+
+# Callback to start batch processing
+@callback(
+    [Output("setup-processing-active", "data"),
+     Output("setup-progress-interval", "disabled"),
+     Output("setup-processing-status", "children"),
+     Output("setup-batch-process-button", "loading")],
+    [Input("setup-batch-process-button", "n_clicks")],
+    [State("setup-output-directory-input", "value"),
+     State("setup-config-store", "data")],
+    prevent_initial_call=True,
+    running=[
+        (Output("setup-batch-process-button", "disabled"), True, False),
+    ]
+)
+def start_batch_processing(n_clicks, output_directory, current_config):
+    """Start batch processing in background thread."""
+    if not n_clicks:
+        return False, True, "", False
+    
+    # Validate output directory
+    if not output_directory or not output_directory.strip():
+        return False, True, dmc.Alert(
+            "Please specify an output directory.",
+            title="Error",
+            color="red",
+            icon=DashIconify(icon="tabler:alert-circle", width=20),
+            mt="md"
+        ), False
+    
+    output_directory = output_directory.strip()
+    
+    # Validate input directory is set
+    images_directory = current_config.get("images_directory", "")
+    if not images_directory:
+        return False, True, dmc.Alert(
+            "Please set the images directory in the Page Import section first.",
+            title="Error",
+            color="red",
+            icon=DashIconify(icon="tabler:alert-circle", width=20),
+            mt="md"
+        ), False
+    
+    # Check if output directory exists, create if it doesn't
+    try:
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+    except Exception as e:
+        return False, True, dmc.Alert(
+            f"Failed to create output directory: {str(e)}",
+            title="Error",
+            color="red",
+            icon=DashIconify(icon="tabler:alert-circle", width=20),
+            mt="md"
+        ), False
+    
+    # Get chapters from config
+    chapters = current_config.get("chapters", [])
+    if not chapters:
+        return False, True, dmc.Alert(
+            "No chapters defined. Please add at least one chapter in the Section Definition table.",
+            title="Error",
+            color="red",
+            icon=DashIconify(icon="tabler:alert-circle", width=20),
+            mt="md"
+        ), False
+    
+    # Get desired aspect ratio from config
+    desired_aspect_ratio = current_config.get("default_aspect_ratio", 9/5.5)
+    
+    # Initialize progress state
+    progress_state = ProgressState(_progress_state_file)
+    progress_state.clear()
+    
+    # Start background thread
+    thread = threading.Thread(
+        target=run_batch_processing_thread,
+        args=(images_directory, output_directory, chapters, desired_aspect_ratio, progress_state),
+        daemon=True
+    )
+    thread.start()
+    
+    # Return: processing active, enable interval, clear status, show loading
+    return True, False, "", True
+
+
+# Callback to update progress display
+@callback(
+    [Output("setup-processing-progress", "style"),
+     Output("setup-processing-progress", "children"),
+     Output("setup-processing-status", "children", allow_duplicate=True),
+     Output("setup-processing-active", "data", allow_duplicate=True),
+     Output("setup-progress-interval", "disabled", allow_duplicate=True),
+     Output("setup-batch-process-button", "loading", allow_duplicate=True)],
+    [Input("setup-progress-interval", "n_intervals")],
+    [State("setup-processing-active", "data"),
+     State("setup-config-store", "data")],
+    prevent_initial_call=True
+)
+def update_progress(n_intervals, processing_active, current_config):
+    """Update progress display from progress state file."""
+    if not processing_active:
+        return {"display": "none"}, [], "", False, True, False
+    
+    # Read progress state
+    progress_state = ProgressState(_progress_state_file)
+    state = progress_state.get()
+    
+    status = state.get("status", "idle")
+    message = state.get("message", "")
+    steps = state.get("steps", [])
+    total_elapsed = state.get("total_elapsed_time", 0)
+    
+    if status == "complete":
+        # Processing complete - show final summary
+        minutes = int(total_elapsed // 60)
+        seconds = int(total_elapsed % 60)
+        time_str = f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
+        
+        success_alert = dmc.Alert(
+            [
+                html.Div("Batch processing completed successfully!"),
+                html.Div(f"Total processing time: {time_str}", style={"marginTop": "8px"}),
+                html.Div(f"Check the output directory for processed images.", style={"marginTop": "4px"}),
+            ],
+            title="Processing Complete",
+            color="green",
+            icon=DashIconify(icon="tabler:check", width=20),
+            mt="md"
+        )
+        return {"display": "none"}, [], success_alert, False, True, False
+    
+    elif status == "error":
+        # Processing error
+        error_alert = dmc.Alert(
+            message,
+            title="Processing Error",
+            color="red",
+            icon=DashIconify(icon="tabler:alert-circle", width=20),
+            mt="md"
+        )
+        return {"display": "none"}, [], error_alert, False, True, False
+    
+    # Processing in progress - build multi-line progress display
+    progress_items = []
+    
+    for step in steps:
+        step_type = step.get("type", "text")
+        step_status = step.get("status", "active")
+        step_message = step.get("message", "")
+        elapsed = step.get("elapsed_time", 0)
+        
+        # Format elapsed time
+        if elapsed > 0:
+            if elapsed >= 60:
+                minutes = int(elapsed // 60)
+                seconds = int(elapsed % 60)
+                time_str = f" ({minutes}m {seconds}s)"
+            else:
+                time_str = f" ({int(elapsed)}s)"
+        else:
+            time_str = ""
+        
+        if step_type == "text":
+            # Simple text line
+            if step_status == "complete":
+                # Show completed step with checkmark and time
+                progress_items.append(
+                    dmc.Group([
+                        DashIconify(icon="tabler:check", width=16, color="green"),
+                        dmc.Text(f"{step_message}{time_str}", size="sm", c="dimmed")
+                    ], gap="xs", mb="xs")
+                )
+            else:
+                # Active text step with spinner
+                progress_items.append(
+                    dmc.Group([
+                        dmc.Loader(size="sm", type="dots"),
+                        dmc.Text(step_message, size="sm", fw=500)
+                    ], gap="xs", mb="xs")
+                )
+        
+        elif step_type == "progress":
+            # Progress bar
+            current = step.get("current", 0)
+            total = step.get("total", 0)
+            percentage = step.get("percentage", 0)
+            
+            if step_status == "complete":
+                # Show completed progress bar
+                progress_items.append(
+                    dmc.Stack([
+                        dmc.Group([
+                            DashIconify(icon="tabler:check", width=16, color="green"),
+                            dmc.Text(f"{step_message}{time_str}", size="sm", c="dimmed")
+                        ], gap="xs"),
+                    ], gap="xs", mb="md")
+                )
+            else:
+                # Active progress bar
+                progress_label = f"{step_message} - {current}/{total} ({percentage}%){time_str}"
+                progress_items.append(
+                    dmc.Stack([
+                        dmc.Text(progress_label, size="sm", fw=500),
+                        dmc.Progress(value=percentage, color="blue", size="sm", animated=True)
+                    ], gap="xs", mb="md")
+                )
+    
+    return {"display": "block"}, progress_items, "", True, False, True

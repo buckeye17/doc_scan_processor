@@ -1,6 +1,9 @@
 dash-ag-grid
 easyocr
 notebook
+opencv-python
 pandas
+pillow
 plotly
+scipy
 tqdm
