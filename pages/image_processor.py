@@ -58,14 +58,14 @@ def load_config():
     
     # Default chapters - start with one row encompassing all page images
     default_chapters = [
-        {"id": 1, "title": "All Pages", "start": default_start, "end": default_end, "is_text": True, "aspect_ratio": 9/5.5, "vertical_float": "Center", "horizontal_margin": 5, "vertical_margin": 5},
+        {"id": 1, "title": "All Pages", "start": default_start, "end": default_end, "is_text": True, "aspect_ratio": 9/5.5, "vertical_float": "Chapter", "horizontal_margin": 5, "vertical_margin": 5},
     ]
     
     default_config = {
         "images_directory": "",
         "app_name": "Scan Post Processing",
         "default_aspect_ratio": 9/5.5,
-        "default_vertical_float": "Center",
+        "default_vertical_float": "Chapter",
         "default_horizontal_margin": 5,
         "default_vertical_margin": 5,
         "chapters": default_chapters
@@ -125,10 +125,10 @@ def validate_directory_path(directory_path):
     except Exception as e:
         return {"valid": False, "error": f"Error accessing directory: {str(e)}", "jpg_count": 0}
 
-# Load current configuration
-current_config = load_config()
-
 def layout():
+    # Load current configuration fresh each time the page is rendered
+    current_config = load_config()
+    
     return dmc.Container([
         dmc.Stack([
             dmc.Title("Image Processor", order=1, mb="lg"),
@@ -198,8 +198,9 @@ def layout():
                                 label="Vertical Float",
                                 description="Vertical alignment of content when it doesn't span full page height",
                                 placeholder="Select alignment",
-                                value=current_config.get("default_vertical_float", "Center"),
+                                value=current_config.get("default_vertical_float", "Chapter"),
                                 data=[
+                                    {"value": "Chapter", "label": "Chapter"},
                                     {"value": "Top", "label": "Top"},
                                     {"value": "Center", "label": "Center"},
                                     {"value": "Bottom", "label": "Bottom"}
@@ -321,7 +322,7 @@ def layout():
                                 "editable": True,
                                 "cellEditor": "agSelectCellEditor",
                                 "cellEditorParams": {
-                                    "values": ["Top", "Center", "Bottom"]
+                                    "values": ["Chapter", "Top", "Center", "Bottom"]
                                 },
                                 "width": 140,
                             },
@@ -601,7 +602,7 @@ def add_chapter(n_clicks, current_rows, current_config, aspect_ratio, vertical_f
         "end": new_end,
         "is_text": True,
         "aspect_ratio": aspect_ratio or 9/5.5,
-        "vertical_float": vertical_float or "Center",
+        "vertical_float": vertical_float or "Chapter",
         "horizontal_margin": h_margin or 5,
         "vertical_margin": v_margin or 5,
     }
@@ -669,7 +670,7 @@ def apply_default_adjustments(n_clicks, current_rows, current_config, aspect_rat
     for row in current_rows:
         updated_row = row.copy()
         updated_row["aspect_ratio"] = aspect_ratio or 9/5.5
-        updated_row["vertical_float"] = vertical_float or "Center"
+        updated_row["vertical_float"] = vertical_float or "Chapter"
         updated_row["horizontal_margin"] = h_margin or 5
         updated_row["vertical_margin"] = v_margin or 5
         updated_rows.append(updated_row)
@@ -678,7 +679,7 @@ def apply_default_adjustments(n_clicks, current_rows, current_config, aspect_rat
     updated_config = current_config.copy()
     updated_config["chapters"] = updated_rows
     updated_config["default_aspect_ratio"] = aspect_ratio or 9/5.5
-    updated_config["default_vertical_float"] = vertical_float or "Center"
+    updated_config["default_vertical_float"] = vertical_float or "Chapter"
     updated_config["default_horizontal_margin"] = h_margin or 5
     updated_config["default_vertical_margin"] = v_margin or 5
     save_config(updated_config)
@@ -800,7 +801,7 @@ def update_chapters_on_directory_change(directory_path, current_config):
             "editable": True,
             "cellEditor": "agSelectCellEditor",
             "cellEditorParams": {
-                "values": ["Top", "Center", "Bottom"]
+                "values": ["Chapter", "Top", "Center", "Bottom"]
             },
             "width": 140,
         },
