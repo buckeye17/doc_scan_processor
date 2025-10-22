@@ -79,7 +79,7 @@ nav_bar_content = dmc.Stack([
 # Main app layout with AppShell containing navbar and three-column layout
 app.layout = dmc.MantineProvider([
     dcc.Location(id="url", refresh=False),
-    dcc.Store(id="shared-page-state", storage_type="session", data=""),
+    dcc.Store(id="shared-page-state", storage_type="session", data={"current_image": "", "last_active_page": ""}),
     dmc.AppShell([
         dmc.AppShellHeader([
             dmc.Group([

@@ -124,16 +124,29 @@ layout = dmc.Flex([
 )
 def page_navigation(page, step, prev_clicks, next_clicks, shared_page):
     """Handle page navigation and step changes for viewer."""
-    from components import pages
+    from components import pages, get_shared_page_state_image, get_shared_page_state_last_active, create_shared_page_state
+
+    print(f"Viewer: {ctx.triggered_id}")
     
     triggered_id = ctx.triggered_id
     prev_disabled = True
     next_disabled = True
     
+    # Extract shared page state info
+    shared_image = get_shared_page_state_image(shared_page)
+    last_active_page = get_shared_page_state_last_active(shared_page)
+    
+    # Check if we're switching from editor to viewer
+    # If triggered by viewer-page-select and viewer was NOT the last active page,
+    # load the image from shared state
+    if triggered_id == "viewer-page-select" and last_active_page != "viewer":
+        if shared_image and shared_image in pages:
+            page = shared_image
+    
     # Use shared page state if current page is empty/not set
     if not page or page == "":
-        if shared_page and shared_page != "":
-            page = shared_page
+        if shared_image and shared_image != "":
+            page = shared_image
     
     if isinstance(page, str):
         # update selected page if navigation button was clicked
@@ -151,7 +164,10 @@ def page_navigation(page, step, prev_clicks, next_clicks, shared_page):
         prev_disabled = current_index == 0
         next_disabled = current_index == len(pages) - 1
 
-    return True, page, prev_disabled, next_disabled, page, step, triggered_id, page
+    # Update shared page state with current image and mark viewer as last active
+    new_shared_state = create_shared_page_state(page, "viewer")
+
+    return True, page, prev_disabled, next_disabled, page, step, triggered_id, new_shared_state
 
 
 @callback(
@@ -192,7 +208,7 @@ def update_viewer_page(page, step, triggered_id):
 def update_page_selector(shared_page, pathname):
     """Update page selector options when configuration changes."""
     from dash import no_update
-    from components import get_pages_list
+    from components import get_pages_list, get_shared_page_state_image
     
     # Only update if we're on the viewer page
     if pathname != "/":
@@ -206,10 +222,13 @@ def update_page_selector(shared_page, pathname):
     
     page_data = [{"value": page, "label": page} for page in current_pages]
     
+    # Extract the current image from shared page state
+    shared_image = get_shared_page_state_image(shared_page)
+    
     # Set value to shared page if it exists in the list, otherwise use first non-empty page
     selected_page = ""
-    if shared_page and shared_page in current_pages:
-        selected_page = shared_page
+    if shared_image and shared_image in current_pages:
+        selected_page = shared_image
     elif len(current_pages) > 1:  # Has pages beyond empty option
         selected_page = current_pages[1]  # First actual page (index 0 is empty)
     

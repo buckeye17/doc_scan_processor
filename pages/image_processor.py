@@ -451,13 +451,15 @@ def layout():
 )
 def validate_and_save_directory(directory_path, current_config):
     """Automatically validate directory and save configuration when valid."""
+    from components import create_shared_page_state
+    
     if not directory_path:
         return (
             "",  # No error for empty input
             {"width": "100%"},  # Default style
             "",  # No message to show
             current_config,
-            ""  # No page selected
+            create_shared_page_state("", "")  # No page selected
         )
     
     validation_result = validate_directory_path(directory_path)
@@ -468,7 +470,7 @@ def validate_and_save_directory(directory_path, current_config):
             {"width": "100%"},  # Default style
             "",  # No success message to show when invalid
             current_config,
-            ""  # No page selected
+            create_shared_page_state("", "")  # No page selected
         )
     
     # Directory is valid, create JPG count message
@@ -496,7 +498,7 @@ def validate_and_save_directory(directory_path, current_config):
         {"width": "100%", "borderColor": "#40c057", "borderWidth": "2px"},  # Green border for valid input
         message,  # JPG count success message as standard text
         new_config,
-        first_jpg  # Set first JPG as selected page
+        create_shared_page_state(first_jpg, "")  # Set first JPG as selected page, no last active page yet
     )
 
 
@@ -506,12 +508,28 @@ def validate_and_save_directory(directory_path, current_config):
 @callback(
     Output("shared-page-state", "data", allow_duplicate=True),
     [Input("url", "pathname")],
+    [State("shared-page-state", "data")],
     prevent_initial_call=True
 )
-def initialize_shared_page_state_on_app_load(pathname):
-    """Initialize shared page state with first JPG file from current config when app loads."""
+def initialize_shared_page_state_on_app_load(pathname, shared_page):
+    """Initialize shared page state with first JPG file from current config when no selection exists."""
+    from components import (
+        create_shared_page_state,
+        get_shared_page_state_image,
+        get_shared_page_state_last_active,
+    )
+    
     # Only run this initialization once when the app first loads (any page)
     if pathname in ["/", "/editor", "/setup"]:
+        shared_page = shared_page or {}
+
+        # Preserve existing selection if one is already stored
+        if (
+            get_shared_page_state_image(shared_page)
+            or get_shared_page_state_last_active(shared_page)
+        ):
+            return no_update
+
         config = load_config()
         directory_path = config.get("images_directory", "")
         
@@ -519,7 +537,7 @@ def initialize_shared_page_state_on_app_load(pathname):
             validation_result = validate_directory_path(directory_path)
             if validation_result["valid"] and validation_result["files"]:
                 first_jpg = sorted(validation_result["files"])[0]
-                return first_jpg
+                return create_shared_page_state(first_jpg, "")
     
     return no_update
 

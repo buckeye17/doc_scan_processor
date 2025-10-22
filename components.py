@@ -47,6 +47,56 @@ def get_pages_directory():
     config = load_config()
     return config.get("images_directory", r"C:\Users\adiad\Downloads\jpgs")
 
+def get_shared_page_state_image(shared_page_state):
+    """Extract the current image from shared page state.
+    
+    Handles both old format (string) and new format (dict with current_image).
+    
+    Args:
+        shared_page_state: Either a string (old format) or dict (new format)
+        
+    Returns:
+        str: The current image name, or empty string if none
+    """
+    if isinstance(shared_page_state, dict):
+        return shared_page_state.get("current_image", "")
+    elif isinstance(shared_page_state, str):
+        return shared_page_state
+    return ""
+
+def get_shared_page_state_last_active(shared_page_state):
+    """Extract the last active page from shared page state.
+    
+    Args:
+        shared_page_state: Either a string (old format) or dict (new format)
+        
+    Returns:
+        str: The last active page ('viewer' or 'editor'), or empty string if none
+    """
+    if isinstance(shared_page_state, dict):
+        return shared_page_state.get("last_active_page", "")
+    return ""
+
+def create_shared_page_state(current_image, last_active_page):
+    """Create a shared page state object.
+    
+    Args:
+        current_image: The current image name
+        last_active_page: The last active page ('viewer' or 'editor')
+        
+    Returns:
+        dict: Shared page state object
+    """
+    return {
+        "current_image": current_image,
+        "last_active_page": last_active_page
+    }
+
+def get_pages_directory():
+    """Get the configured pages directory."""
+    config = load_config()
+    return config.get("images_directory", r"C:\Users\adiad\Downloads\jpgs")
+
 def get_pages_list():
     """Get list of pages from the configured directory."""
     pages_dir = get_pages_directory()

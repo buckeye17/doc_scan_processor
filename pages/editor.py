@@ -192,7 +192,10 @@ layout = dmc.Box([
 )
 def page_navigation(page, prev_clicks, next_clicks, shared_page, rotation, tb_margin, lr_margin, float_pos, crop_switch, manual_bbox, manual_state):
     """Handle page navigation in the editor."""
-    from components import pages, save_manual_adjustments, load_manual_adjustments, clear_manual_adjustments
+    from components import pages, save_manual_adjustments, load_manual_adjustments, clear_manual_adjustments, \
+        get_shared_page_state_image, get_shared_page_state_last_active, create_shared_page_state
+
+    print(f"Editor: {ctx.triggered_id}")
 
     triggered_id = ctx.triggered_id
     prev_disabled = True
@@ -201,15 +204,27 @@ def page_navigation(page, prev_clicks, next_clicks, shared_page, rotation, tb_ma
     manual_bbox = manual_bbox or {}
     notifications = []
 
+    # Extract shared page state info
+    shared_image = get_shared_page_state_image(shared_page)
+    last_active_page = get_shared_page_state_last_active(shared_page)
+
     current_page = manual_state.get("current_page")
     if not isinstance(current_page, str) or current_page not in pages:
         current_page = page if isinstance(page, str) else None
     
+    # Check if we're switching from viewer to editor
+    # If triggered by editor-page-select and editor was NOT the last active page,
+    # load the image from shared state
+    if triggered_id == "editor-page-select" and last_active_page != "editor":
+        if shared_image and shared_image in pages:
+            current_page = shared_image
+            page = shared_image
+    
     # Use shared page state if current page is not set
     if not current_page or current_page == "":
-        if shared_page and shared_page != "":
-            current_page = shared_page
-            page = shared_page
+        if shared_image and shared_image != "":
+            current_page = shared_image
+            page = shared_image
 
     leaving_page = current_page
 
@@ -300,7 +315,10 @@ def page_navigation(page, prev_clicks, next_clicks, shared_page, rotation, tb_ma
 
     manual_state["current_page"] = new_page
 
-    return True, new_page, prev_disabled, next_disabled, manual_state, notifications, new_page
+    # Update shared page state with current image and mark editor as last active
+    new_shared_state = create_shared_page_state(new_page, "editor")
+
+    return True, new_page, prev_disabled, next_disabled, manual_state, notifications, new_shared_state
 
 @callback(
     Output("editor-rotation-angle", "value"),
@@ -586,7 +604,7 @@ def manage_crop_switch(preview_mode):
 def update_editor_page_selector(shared_page, pathname):
     """Update page selector options when configuration changes."""
     from dash import no_update
-    from components import get_pages_list
+    from components import get_pages_list, get_shared_page_state_image
     
     # Only update if we're on the editor page
     if pathname != "/editor":
@@ -600,39 +618,45 @@ def update_editor_page_selector(shared_page, pathname):
     
     page_data = [{"value": page, "label": page} for page in current_pages]
     
+    # Extract the current image from shared page state
+    shared_image = get_shared_page_state_image(shared_page)
+    
     # Set value to shared page if it exists in the list, otherwise use first non-empty page
     selected_page = ""
-    if shared_page and shared_page in current_pages:
-        selected_page = shared_page
+    if shared_image and shared_image in current_pages:
+        selected_page = shared_image
     elif len(current_pages) > 1:  # Has pages beyond empty option
         selected_page = current_pages[1]  # First actual page (index 0 is empty)
     
     return page_data, selected_page
 
 
-@callback(
-    [Output("editor-page-select", "data"),
-     Output("editor-page-select", "value", allow_duplicate=True)],
-    [Input("shared-page-state", "data")],
-    prevent_initial_call=True
-)
-def update_page_selector(shared_page):
-    """Update page selector options when configuration changes."""
-    from components import get_pages_list
+# @callback(
+#     [Output("editor-page-select", "data"),
+#      Output("editor-page-select", "value", allow_duplicate=True)],
+#     [Input("shared-page-state", "data")],
+#     prevent_initial_call=True
+# )
+# def update_page_selector(shared_page):
+#     """Update page selector options when configuration changes."""
+#     from components import get_pages_list, get_shared_page_state_image
     
-    # Refresh the pages list from current configuration
-    current_pages = get_pages_list()
+#     # Refresh the pages list from current configuration
+#     current_pages = get_pages_list()
     
-    if len(current_pages) <= 1:  # Only empty option or no options
-        return [{"value": "", "label": "No images found"}], ""
+#     if len(current_pages) <= 1:  # Only empty option or no options
+#         return [{"value": "", "label": "No images found"}], ""
     
-    page_data = [{"value": page, "label": page} for page in current_pages]
+#     page_data = [{"value": page, "label": page} for page in current_pages]
     
-    # Set value to shared page if it exists in the list, otherwise use first non-empty page
-    selected_page = ""
-    if shared_page and shared_page in current_pages:
-        selected_page = shared_page
-    elif len(current_pages) > 1:  # Has pages beyond empty option
-        selected_page = current_pages[1]  # First actual page (index 0 is empty)
+#     # Extract the current image from shared page state
+#     shared_image = get_shared_page_state_image(shared_page)
     
-    return page_data, selected_page
+#     # Set value to shared page if it exists in the list, otherwise use first non-empty page
+#     selected_page = ""
+#     if shared_image and shared_image in current_pages:
+#         selected_page = shared_image
+#     elif len(current_pages) > 1:  # Has pages beyond empty option
+#         selected_page = current_pages[1]  # First actual page (index 0 is empty)
+    
+#     return page_data, selected_page
