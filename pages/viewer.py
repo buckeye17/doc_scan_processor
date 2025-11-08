@@ -25,8 +25,7 @@ controls = dmc.Stack([
         children=[
             dmc.StepperStep(label="Original Image"),
             dmc.StepperStep(label="Find Text"),
-            dmc.StepperStep(label="Rotate Page"),
-            dmc.StepperStep(label="Crop to Text"),
+            dmc.StepperStep(label="Crop to Text & Rotate"),
             dmc.StepperStep(label="Add Margins"),
             dmc.StepperStep(label="Resize Page"),
             dmc.StepperStep(label="Final Result"),
@@ -186,7 +185,7 @@ def update_viewer_page(page, step, triggered_id):
     info_card = None
     if isinstance(page, str) and page:
         # Create figure with bounding boxes for specific steps
-        show_bboxes = step in [1, 2]
+        show_bboxes = step in [1]
         fig = create_page_figure(page, step, show_bboxes)
         
         # Create info card

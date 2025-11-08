@@ -231,14 +231,12 @@ def get_image_path(page, step):
     if step == 1:
         return os.path.join(pages_directory, page)
     elif step == 2:
-        return os.path.join(data_dir, "2_rotate", page)
-    elif step == 3:
         return os.path.join(data_dir, "3_crop", page)
-    elif step == 4:
+    elif step == 3:
         return os.path.join(data_dir, "4_margin", page)
-    elif step == 5:
+    elif step == 4:
         return os.path.join(data_dir, "5_resize", page)
-    elif step == 6:
+    elif step == 5:
         return os.path.join(data_dir, "6_final", page)
     else:
         return os.path.join(pages_directory, page)
@@ -312,17 +310,8 @@ def create_page_figure(page, step=0, show_bboxes=False):
             df = pd.read_pickle(df_path)
             bbox_line_style = {"color": dmc.DEFAULT_THEME["colors"]["blue"][2]}
             
-            if (step == 1) and (page in df.index):
-                # draw bounding boxes around each line of text
-                bboxes = df.at[page, "line_bboxes"]
-                for bbox in bboxes:
-                    fig.add_shape(type="line", x0=bbox[0][0], y0=bbox[0][1], x1=bbox[1][0], y1=bbox[1][1], line=bbox_line_style)
-                    fig.add_shape(type="line", x0=bbox[1][0], y0=bbox[1][1], x1=bbox[2][0], y1=bbox[2][1], line=bbox_line_style)
-                    fig.add_shape(type="line", x0=bbox[2][0], y0=bbox[2][1], x1=bbox[3][0], y1=bbox[3][1], line=bbox_line_style)
-                    fig.add_shape(type="line", x0=bbox[3][0], y0=bbox[3][1], x1=bbox[0][0], y1=bbox[0][1], line=bbox_line_style)
-            
-            if (step == 2) and (page in df.index):
-                # draw bounding box around all text
+            if (step in [1]) and (page in df.index):
+                # draw bounding box around all text using all_text_bbox column
                 x_min, y_min, x_max, y_max = df.at[page, "all_text_bbox"]
                 fig.add_shape(type="line", x0=x_min, y0=y_min, x1=x_max, y1=y_min, line=bbox_line_style)
                 fig.add_shape(type="line", x0=x_max, y0=y_min, x1=x_max, y1=y_max, line=bbox_line_style)
@@ -357,17 +346,18 @@ def create_page_info_card(page, step=0):
         df = pd.read_pickle(df_path)
         
         if (step == 1) and (page in df.index):
-            bboxes = df.at[page, "line_bboxes"]
             info_lines += [
-                dmc.Group([dmc.Text("N Bounding Boxes:", fw=500), dmc.Text(str(len(bboxes)))], gap="xs"),
-                dmc.Group([dmc.Text("Bounding boxes represent lines of text. Each line's angle from horizontal is measured. The page will be rotated based on the median angle from horizontal.")], gap="xs")
+                dmc.Group([dmc.Text("Text bounding box detected.  The page image will be cropped to this region.")], gap="xs")
             ]
         
         if (step == 2) and (page in df.index):
             angle = df.at[page, "angle"]
+            explanation = """Page has been rotated and cropped to remove white space.  The rotation angle was 
+            calculated using projection profile.
+            """
             info_lines += [
                 dmc.Group([dmc.Text("Rotation Angle:", fw=500), dmc.Text(f"{angle}°")], gap="xs"),
-                dmc.Group([dmc.Text("The bounding box should encapsulate all text on the page. It will be used to crop out all white space.")], gap="xs"),
+                dmc.Group([dmc.Text(explanation)], gap="xs"),
             ]
     
     return dmc.Card(dmc.Group(info_lines, gap="xs"))
@@ -570,17 +560,15 @@ def get_standard_dimensions():
     for page in df.index:
         # For simplicity, we'll analyze all pages since we don't have chapter information here
         # In the original script, first and last pages of chapters were ignored
-        line_bboxes = df.at[page, "line_bboxes"]
-        if len(line_bboxes) == 0:
+        all_text_bbox = df.at[page, "all_text_bbox"]
+        if all_text_bbox is None or len(all_text_bbox) != 4:
             continue
             
-        # Calculate width from line bboxes
-        x_coords = [point[0] for bbox in line_bboxes for point in bbox]
-        if x_coords:
-            min_x, max_x = min(x_coords), max(x_coords)
-            width = max_x - min_x
-            if width < min_width:
-                min_width = width
+        # Calculate width from all_text_bbox
+        x_min, y_min, x_max, y_max = all_text_bbox
+        width = x_max - x_min
+        if width < min_width:
+            min_width = width
     
     # If no valid width found, use a reasonable default
     if min_width == float('inf'):

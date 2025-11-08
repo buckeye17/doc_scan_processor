@@ -1,5 +1,7 @@
+.python-version
+config.json
+
 __pycache__/*
 data/*
 pages/__pycache__/*
 prototype/*
-config.json

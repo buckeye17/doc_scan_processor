@@ -473,12 +473,12 @@ def update_editor_page(page, rotation, top_bottom_margin,
             except Exception as e:
                 # Fallback to automatic processing if manual processing fails
                 from components import create_page_figure
-                fig = create_page_figure(page, step=6, show_bboxes=False)
+                fig = create_page_figure(page, step=5, show_bboxes=False)
         else:
             # This branch is no longer used in preview mode
             # Show final processed image from automatic pipeline
             from components import create_page_figure
-            fig = create_page_figure(page, step=6, show_bboxes=False)
+            fig = create_page_figure(page, step=5, show_bboxes=False)
         # Override the drag mode for preview
         fig.update_layout(dragmode="zoom")
     else:
