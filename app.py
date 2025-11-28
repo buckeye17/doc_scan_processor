@@ -16,7 +16,7 @@ nav_bar_content = dmc.Stack([
     dmc.Tooltip(
         label="Setup & Process Images",
         children=dmc.Anchor(
-            DashIconify(icon="fluent:image-copy-24-filled", width=24),
+            DashIconify(icon="fluent:settings-24-filled", width=24),
             href="/setup",
             underline=False,
             style={
@@ -30,6 +30,26 @@ nav_bar_content = dmc.Stack([
                 "height": "48px"
             },
             id="nav-setup"
+        ),
+        position="right"
+    ),
+    dmc.Tooltip(
+        label="Gallery View",
+        children=dmc.Anchor(
+            DashIconify(icon="fluent:image-copy-24-filled", width=24),
+            href="/gallery",
+            underline=False,
+            style={
+                "padding": "12px",
+                "borderRadius": "8px",
+                "display": "flex",
+                "alignItems": "center",
+                "justifyContent": "center",
+                "color": "#666",
+                "width": "48px",
+                "height": "48px"
+            },
+            id="nav-gallery"
         ),
         position="right"
     ),
@@ -108,9 +128,11 @@ app.layout = dmc.MantineProvider([
     [Output("nav-viewer", "style"),
      Output("nav-editor", "style"),
      Output("nav-setup", "style"),
+     Output("nav-gallery", "style"),
      Output("nav-viewer", "href"),
      Output("nav-editor", "href"),
-     Output("nav-setup", "href")],
+     Output("nav-setup", "href"),
+     Output("nav-gallery", "href")],
     [Input("url", "pathname"),
      Input("shared-page-state", "data")]
 )
@@ -140,13 +162,16 @@ def update_navigation_styles(pathname, current_page):
     viewer_style = {**base_style, **inactive_style}
     editor_style = {**base_style, **inactive_style}
     setup_style = {**base_style, **inactive_style}
+    gallery_style = {**base_style, **inactive_style}
     
     # Set active style based on pathname
     if pathname == "/editor":
         editor_style.update(active_style)
     elif pathname == "/setup":
         setup_style.update(active_style)
-    else:
+    elif pathname == "/gallery":
+        gallery_style.update(active_style)
+    elif pathname == "/":
         # Viewer is active (default)
         viewer_style.update(active_style)
     
@@ -154,8 +179,9 @@ def update_navigation_styles(pathname, current_page):
     viewer_href = "/"
     editor_href = "/editor"
     setup_href = "/setup"
+    gallery_href = "/gallery"
     
-    return viewer_style, editor_style, setup_style, viewer_href, editor_href, setup_href
+    return viewer_style, editor_style, setup_style, gallery_style, viewer_href, editor_href, setup_href, gallery_href
 
 if __name__ == "__main__":
     app.run(debug=True)

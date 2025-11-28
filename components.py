@@ -4,6 +4,7 @@ Shared components and utilities for the scan post processing app.
 import os
 import numpy as np
 import pandas as pd
+import base64
 from PIL import Image
 import plotly.express as px
 from dash import dcc
@@ -780,3 +781,15 @@ def clear_manual_adjustments(page):
             print(f"Cleared manual adjustments for {page}")
     except Exception as e:
         print(f"Error clearing manual adjustments for {page}: {e}")
+
+def encode_image_base64(image_path):
+    """Encode image to base64 string."""
+    try:
+        if not os.path.exists(image_path):
+            return ""
+        with open(image_path, "rb") as img_file:
+            return "data:image/jpeg;base64," + base64.b64encode(img_file.read()).decode('utf-8')
+    except Exception as e:
+        print(f"Error encoding image: {e}")
+        return ""
+
