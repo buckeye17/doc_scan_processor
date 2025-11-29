@@ -400,7 +400,7 @@ def layout():
                     dmc.TextInput(
                         label="Output Directory",
                         placeholder="C:\\Users\\YourName\\Documents\\ProcessedImages",
-                        value="",
+                        value=current_config.get("output_directory", ""),
                         id="setup-output-directory-input",
                         description="Directory where processed images will be saved",
                     ),
@@ -932,9 +932,15 @@ def start_batch_processing(n_clicks, output_directory, current_config):
     try:
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
+        
+        # Save output directory to config
+        updated_config = current_config.copy()
+        updated_config["output_directory"] = output_directory
+        save_config(updated_config)
+        
     except Exception as e:
         return False, True, dmc.Alert(
-            f"Failed to create output directory: {str(e)}",
+            f"Failed to create output directory or save config: {str(e)}",
             title="Error",
             color="red",
             icon=DashIconify(icon="tabler:alert-circle", width=20),

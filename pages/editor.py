@@ -25,7 +25,7 @@ controls = dmc.Stack([
     dmc.Switch(
         label="Preview Mode",
         description="Show processed preview instead of original with bounding box",
-        checked=False,
+        checked=True,
         mt=0,
         mb="md",
         id="editor-preview-switch",
@@ -195,8 +195,6 @@ def page_navigation(page, prev_clicks, next_clicks, shared_page, rotation, tb_ma
     from components import pages, save_manual_adjustments, load_manual_adjustments, clear_manual_adjustments, \
         get_shared_page_state_image, get_shared_page_state_last_active, create_shared_page_state
 
-    print(f"Editor: {ctx.triggered_id}")
-
     triggered_id = ctx.triggered_id
     prev_disabled = True
     next_disabled = True
@@ -328,25 +326,41 @@ def page_navigation(page, prev_clicks, next_clicks, shared_page, rotation, tb_ma
     Output("editor-crop-switch", "checked"),
     Output("editor-manual-bbox", "data", allow_duplicate=True),
     Input("editor-manual-adjustments", "data"),
-    State("editor-page-select", "value"),
+    Input("editor-page-select", "value"),
+    Input("url", "pathname"),
     prevent_initial_call=True,
 )
-def load_manual_adjustments_for_page(manual_state, page_value):
+def load_manual_adjustments_for_page(manual_state, page_value, pathname):
     """Load previously saved manual adjustments when a page is selected or navigation buttons are used."""
+    from dash import no_update, ctx
     from components import load_manual_adjustments
+    
+    # Only process if we're on the editor page
+    if pathname != "/editor":
+        return no_update, no_update, no_update, no_update, no_update, no_update
+    
     manual_state = manual_state or {}
-
-    target_page = manual_state.get("current_page")
-    if not isinstance(target_page, str) or not target_page:
+    triggered_id = ctx.triggered_id
+    
+    # Determine the target page:
+    # - If page selector triggered this, use page_value directly
+    # - Otherwise, try current_page from state, fall back to page_value
+    if triggered_id == "editor-page-select":
         target_page = page_value if isinstance(page_value, str) else None
+    else:
+        target_page = manual_state.get("current_page")
+        if not isinstance(target_page, str) or not target_page:
+            target_page = page_value if isinstance(page_value, str) else None
 
     if not isinstance(target_page, str) or not target_page:
         return 0.0, 0.0, 0.0, "center", False, {}
 
+    # Check if we have a snapshot in manual_state that matches the target page
     snapshot = manual_state.get("last_loaded")
     if isinstance(snapshot, dict) and snapshot.get("page") == target_page:
         manual_values = snapshot
     else:
+        # Load fresh values from the dataframe (includes fallback to initial setup values)
         manual_values = load_manual_adjustments(target_page) or {}
 
     rotation = float(manual_values.get('rotation', 0.0) or 0.0)
@@ -562,7 +576,7 @@ def update_editor_page(page, rotation, top_bottom_margin,
 )
 def reset_manual_adjustments(reset_clicks, page):
     """Reset manual adjustments for the current page to auto values."""
-    from components import clear_manual_adjustments
+    from components import clear_manual_adjustments, load_manual_adjustments
     
     if not isinstance(page, str) or not page:
         return 0.0, 0.0, 0.0, "center", False, {}
@@ -573,8 +587,17 @@ def reset_manual_adjustments(reset_clicks, page):
         # Clear manual adjustments from dataframe
         clear_manual_adjustments(page)
         
-        # Reset UI controls to default values
-        return 0.0, 0.0, 0.0, "center", False, {}
+        # Reload values (which will now be the initial defaults)
+        manual_values = load_manual_adjustments(page) or {}
+        
+        rotation = float(manual_values.get('rotation', 0.0) or 0.0)
+        tb_margin = float(manual_values.get('tb_margin', 0.0) or 0.0)
+        lr_margin = float(manual_values.get('lr_margin', 0.0) or 0.0)
+        float_pos = manual_values.get('float_pos', "center") or "center"
+        crop_bbox = manual_values.get('manual_bbox') or manual_values.get('crop_bbox') or {}
+        crop_switch = bool(crop_bbox)
+        
+        return rotation, tb_margin, lr_margin, float_pos, crop_switch, crop_bbox
     
     # This shouldn't happen due to prevent_initial_call=True
     return 0.0, 0.0, 0.0, "center", False, {}
@@ -598,12 +621,14 @@ def manage_crop_switch(preview_mode):
     [Output("editor-page-select", "data", allow_duplicate=True),
      Output("editor-page-select", "value", allow_duplicate=True)],
     [Input("shared-page-state", "data"),
-     Input("url", "pathname")],
+     Input("url", "pathname"),
+     Input("url", "search")],
     prevent_initial_call=True
 )
-def update_editor_page_selector(shared_page, pathname):
-    """Update page selector options when configuration changes."""
+def update_editor_page_selector(shared_page, pathname, search):
+    """Update page selector options when configuration changes or page is passed via URL."""
     from dash import no_update
+    from urllib.parse import parse_qs
     from components import get_pages_list, get_shared_page_state_image
     
     # Only update if we're on the editor page
@@ -618,14 +643,22 @@ def update_editor_page_selector(shared_page, pathname):
     
     page_data = [{"value": page, "label": page} for page in current_pages]
     
-    # Extract the current image from shared page state
-    shared_image = get_shared_page_state_image(shared_page)
-    
-    # Set value to shared page if it exists in the list, otherwise use first non-empty page
+    # Check for page parameter in URL query string (from gallery click)
     selected_page = ""
-    if shared_image and shared_image in current_pages:
-        selected_page = shared_image
-    elif len(current_pages) > 1:  # Has pages beyond empty option
+    if search:
+        query_params = parse_qs(search.lstrip('?'))
+        url_page = query_params.get('page', [None])[0]
+        if url_page and url_page in current_pages:
+            selected_page = url_page
+    
+    # If no URL param, try shared page state
+    if not selected_page:
+        shared_image = get_shared_page_state_image(shared_page)
+        if shared_image and shared_image in current_pages:
+            selected_page = shared_image
+    
+    # Fallback to first page
+    if not selected_page and len(current_pages) > 1:
         selected_page = current_pages[1]  # First actual page (index 0 is empty)
     
     return page_data, selected_page

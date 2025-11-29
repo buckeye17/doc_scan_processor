@@ -124,8 +124,6 @@ layout = dmc.Flex([
 def page_navigation(page, step, prev_clicks, next_clicks, shared_page):
     """Handle page navigation and step changes for viewer."""
     from components import pages, get_shared_page_state_image, get_shared_page_state_last_active, create_shared_page_state
-
-    print(f"Viewer: {ctx.triggered_id}")
     
     triggered_id = ctx.triggered_id
     prev_disabled = True

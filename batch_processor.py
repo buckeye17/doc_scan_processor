@@ -430,6 +430,9 @@ def process_images_batch(input_pages_dir, output_dir, chapters, desired_aspect_r
     # For text pages, rotate images based on the orientation of the lines of text on
     # the page, crop, add margins and resize to the minimum height and width.
     df["angle"] = np.nan
+    df["initial_horizontal_margin"] = np.nan
+    df["initial_vertical_margin"] = np.nan
+    df["initial_vertical_float"] = None
     df = df.assign(
         para_bboxes=pd.Series(dtype=object),
         all_text_bbox=pd.Series(dtype=object))
@@ -539,6 +542,9 @@ def process_images_batch(input_pages_dir, output_dir, chapters, desired_aspect_r
                 
                 if page in df.index:
                     df.at[page, "angle"] = vertical_angle
+                    df.at[page, "initial_horizontal_margin"] = chapter.get("horizontal_margin", 5)
+                    df.at[page, "initial_vertical_margin"] = chapter.get("vertical_margin", 5)
+                    df.at[page, "initial_vertical_float"] = chapter["align"]
                 
                 # correct the image orientation
                 rotated_img = img.rotate(

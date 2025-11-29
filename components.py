@@ -717,7 +717,17 @@ def save_manual_adjustments(page, rotation=None, crop_bbox=None, tb_margin=None,
 
 
 def load_manual_adjustments(page):
-    """Load manual adjustments for a page from the dataframe."""
+    """Load manual adjustments for a page from the dataframe.
+    
+    Falls back to initial values from the batch processor setup table if no
+    manual adjustments have been made for a particular setting.
+    
+    Initial values used as fallback:
+    - 'angle' -> rotation (negated because manual rotation is applied as -rotation)
+    - 'initial_horizontal_margin' -> lr_margin
+    - 'initial_vertical_margin' -> tb_margin
+    - 'initial_vertical_float' -> float_pos
+    """
     df_path = os.path.join(data_dir, "df.pkl")
     
     try:
@@ -749,6 +759,33 @@ def load_manual_adjustments(page):
                 # More robust null checking that doesn't depend on pandas methods
                 if value is not None and str(value).lower() != 'nan' and str(value) != 'None':
                     manual_values[key] = value
+        
+        # Fallback to initial values from batch processor if manual values are missing
+        # Rotation: use 'angle' column (negated because manual rotation is applied as -rotation)
+        if 'rotation' not in manual_values and 'angle' in df.columns:
+            val = df.loc[page, 'angle']
+            if val is not None and str(val).lower() != 'nan' and str(val) != 'None':
+                manual_values['rotation'] = -float(val)
+        
+        # Top-bottom margin: use 'initial_vertical_margin' column
+        if 'tb_margin' not in manual_values and 'initial_vertical_margin' in df.columns:
+            val = df.loc[page, 'initial_vertical_margin']
+            if val is not None and str(val).lower() != 'nan' and str(val) != 'None':
+                manual_values['tb_margin'] = float(val)
+        
+        # Left-right margin: use 'initial_horizontal_margin' column
+        if 'lr_margin' not in manual_values and 'initial_horizontal_margin' in df.columns:
+            val = df.loc[page, 'initial_horizontal_margin']
+            if val is not None and str(val).lower() != 'nan' and str(val) != 'None':
+                manual_values['lr_margin'] = float(val)
+        
+        # Float position: use 'initial_vertical_float' column
+        if 'float_pos' not in manual_values and 'initial_vertical_float' in df.columns:
+            val = df.loc[page, 'initial_vertical_float']
+            if val is not None and str(val).lower() != 'nan' and str(val) != 'None':
+                # Normalize to lowercase for consistency with UI values
+                manual_values['float_pos'] = val.lower() if isinstance(val, str) else val
+                
     except Exception as e:
         print(f"Error loading manual adjustments for {page}: {e}")
         return {}

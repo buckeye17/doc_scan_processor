@@ -149,8 +149,20 @@ def update_gallery(prev_clicks, next_clicks, pathname, cols, rows, current_page_
                 image_component,
                 dmc.Text(page_name, fw=500, ta="center")
             ], align="center", gap="sm")
-        ], withBorder=True, shadow="sm", radius="md", w="fit-content", p="sm")
-        cards.append(dmc.Center(card))
+        ], 
+        withBorder=True, 
+        shadow="sm", 
+        radius="md", 
+        w="fit-content", 
+        p="sm",
+        )
+        # Wrap card in dcc.Link to navigate to editor with page name in URL
+        clickable_card = dcc.Link(
+            card,
+            href=f"/editor?page={page_name}",
+            style={"textDecoration": "none", "cursor": "pointer"},
+        )
+        cards.append(dmc.Center(clickable_card))
         
     page_info = f"Page {current_page_index + 1} of {total_pages}"
     prev_disabled = current_page_index == 0
