@@ -90,11 +90,6 @@ controls = dmc.Stack([
         id="editor-reset-btn",
         leftSection=DashIconify(icon="material-symbols:refresh", width=16),
     ),
-    # Store components for state management
-    dmc.Box([
-        dcc.Store(id="editor-manual-adjustments", data={}),
-        dcc.Store(id="editor-manual-bbox", data={})
-    ], style={"display": "none"})
 ])
 
 editor = dmc.Box([
@@ -174,41 +169,30 @@ layout = dmc.Box([
     Output("editor-page-select", "value"),
     Output("editor-prev-page-btn", "disabled"),
     Output("editor-next-page-btn", "disabled"),
-    Output("editor-manual-adjustments", "data"),
-    Output("editor-notification-container", "sendNotifications"),
     Output("shared-page-state", "data", allow_duplicate=True),
     Input("editor-page-select", "value"),
     Input("editor-prev-page-btn", "n_clicks"),
     Input("editor-next-page-btn", "n_clicks"),
     State("shared-page-state", "data"),
-    State("editor-rotation-angle", "value"),
-    State("editor-top-bottom-margin", "value"),
-    State("editor-left-right-margin", "value"),
-    State("editor-float", "value"),
-    State("editor-crop-switch", "checked"),
-    State("editor-manual-bbox", "data"),
-    State("editor-manual-adjustments", "data"),
     prevent_initial_call=True,
 )
-def page_navigation(page, prev_clicks, next_clicks, shared_page, rotation, tb_margin, lr_margin, float_pos, crop_switch, manual_bbox, manual_state):
-    """Handle page navigation in the editor."""
-    from components import pages, save_manual_adjustments, load_manual_adjustments, clear_manual_adjustments, \
-        get_shared_page_state_image, get_shared_page_state_last_active, create_shared_page_state
+def page_navigation(page, prev_clicks, next_clicks, shared_page):
+    """Handle page navigation in the editor.
+    
+    Note: Manual adjustments are now saved directly to the dataframe when inputs change,
+    so this callback only handles navigation logic.
+    """
+    from components import pages, get_shared_page_state_image, get_shared_page_state_last_active, create_shared_page_state
 
     triggered_id = ctx.triggered_id
     prev_disabled = True
     next_disabled = True
-    manual_state = manual_state or {}
-    manual_bbox = manual_bbox or {}
-    notifications = []
 
     # Extract shared page state info
     shared_image = get_shared_page_state_image(shared_page)
     last_active_page = get_shared_page_state_last_active(shared_page)
 
-    current_page = manual_state.get("current_page")
-    if not isinstance(current_page, str) or current_page not in pages:
-        current_page = page if isinstance(page, str) else None
+    current_page = page if isinstance(page, str) else None
     
     # Check if we're switching from viewer to editor
     # If triggered by editor-page-select and editor was NOT the last active page,
@@ -223,58 +207,6 @@ def page_navigation(page, prev_clicks, next_clicks, shared_page, rotation, tb_ma
         if shared_image and shared_image != "":
             current_page = shared_image
             page = shared_image
-
-    leaving_page = current_page
-
-    if triggered_id in ["editor-prev-page-btn", "editor-next-page-btn", "editor-page-select"]:
-        if isinstance(leaving_page, str) and leaving_page:
-            has_adjustments = (
-                rotation != 0 or 
-                tb_margin != 0 or 
-                lr_margin != 0 or 
-                float_pos != "center" or
-                crop_switch or
-                manual_bbox
-            )
-
-            if has_adjustments:
-                crop_bbox = manual_bbox if crop_switch and manual_bbox else None
-                save_manual_adjustments(
-                    page=leaving_page,
-                    rotation=rotation if rotation != 0 else None,
-                    crop_bbox=crop_bbox,
-                    tb_margin=tb_margin if tb_margin != 0 else None,
-                    lr_margin=lr_margin if lr_margin != 0 else None,
-                    float_pos=float_pos if float_pos != "center" else None
-                )
-                notifications = [{
-                    "title": "Manual Adjustments Saved",
-                    "id": f"manual-save-{leaving_page}",
-                    "action": "show",
-                    "message": f"Saved manual adjustments to {leaving_page}",
-                    "icon": DashIconify(icon="material-symbols:save-rounded"),
-                    "position": "top-center"
-                }]
-                manual_state["last_loaded"] = {
-                    "page": leaving_page,
-                    "rotation": float(rotation or 0.0),
-                    "tb_margin": float(tb_margin or 0.0),
-                    "lr_margin": float(lr_margin or 0.0),
-                    "float_pos": float_pos or "center",
-                    "crop_switch": bool(crop_bbox),
-                    "manual_bbox": crop_bbox or {}
-                }
-            else:
-                clear_manual_adjustments(leaving_page)
-                manual_state["last_loaded"] = {
-                    "page": leaving_page,
-                    "rotation": 0.0,
-                    "tb_margin": 0.0,
-                    "lr_margin": 0.0,
-                    "float_pos": "center",
-                    "crop_switch": False,
-                    "manual_bbox": {}
-                }
 
     new_page = current_page
 
@@ -295,28 +227,105 @@ def page_navigation(page, prev_clicks, next_clicks, shared_page, rotation, tb_ma
         current_index = pages.index(new_page)
         prev_disabled = current_index == 0
         next_disabled = current_index == len(pages) - 1
-        manual_values = load_manual_adjustments(new_page) or {}
-        manual_state["last_loaded"] = {
-            "page": new_page,
-            "rotation": float(manual_values.get("rotation", 0.0) or 0.0),
-            "tb_margin": float(manual_values.get("tb_margin", 0.0) or 0.0),
-            "lr_margin": float(manual_values.get("lr_margin", 0.0) or 0.0),
-            "float_pos": manual_values.get("float_pos", "center") or "center",
-            "crop_switch": bool(manual_values.get("crop_bbox")),
-            "manual_bbox": manual_values.get("crop_bbox") or {}
-        }
-
     else:
         new_page = ""
         prev_disabled = True
         next_disabled = True
 
-    manual_state["current_page"] = new_page
-
     # Update shared page state with current image and mark editor as last active
     new_shared_state = create_shared_page_state(new_page, "editor")
 
-    return True, new_page, prev_disabled, next_disabled, manual_state, notifications, new_shared_state
+    return True, new_page, prev_disabled, next_disabled, new_shared_state
+
+
+# Callbacks to save manual adjustments directly to dataframe when inputs change
+@callback(
+    Output("editor-notification-container", "sendNotifications", allow_duplicate=True),
+    Input("editor-rotation-angle", "value"),
+    State("editor-page-select", "value"),
+    prevent_initial_call=True,
+)
+def save_rotation_to_dataframe(rotation, page):
+    """Save rotation value directly to dataframe when it changes."""
+    from components import save_manual_adjustments
+    
+    if not isinstance(page, str) or not page:
+        return []
+    
+    try:
+        rotation = float(rotation) if rotation is not None else 0.0
+    except (ValueError, TypeError):
+        rotation = 0.0
+    
+    # Save to dataframe (use None if default value)
+    save_manual_adjustments(page=page, rotation=rotation if rotation != 0 else None)
+    return []
+
+
+@callback(
+    Output("editor-notification-container", "sendNotifications", allow_duplicate=True),
+    Input("editor-top-bottom-margin", "value"),
+    State("editor-page-select", "value"),
+    prevent_initial_call=True,
+)
+def save_tb_margin_to_dataframe(tb_margin, page):
+    """Save top-bottom margin value directly to dataframe when it changes."""
+    from components import save_manual_adjustments
+    
+    if not isinstance(page, str) or not page:
+        return []
+    
+    try:
+        tb_margin = float(tb_margin) if tb_margin is not None else 0.0
+    except (ValueError, TypeError):
+        tb_margin = 0.0
+    
+    # Save to dataframe (use None if default value)
+    save_manual_adjustments(page=page, tb_margin=tb_margin if tb_margin != 0 else None)
+    return []
+
+
+@callback(
+    Output("editor-notification-container", "sendNotifications", allow_duplicate=True),
+    Input("editor-left-right-margin", "value"),
+    State("editor-page-select", "value"),
+    prevent_initial_call=True,
+)
+def save_lr_margin_to_dataframe(lr_margin, page):
+    """Save left-right margin value directly to dataframe when it changes."""
+    from components import save_manual_adjustments
+    
+    if not isinstance(page, str) or not page:
+        return []
+    
+    try:
+        lr_margin = float(lr_margin) if lr_margin is not None else 0.0
+    except (ValueError, TypeError):
+        lr_margin = 0.0
+    
+    # Save to dataframe (use None if default value)
+    save_manual_adjustments(page=page, lr_margin=lr_margin if lr_margin != 0 else None)
+    return []
+
+
+@callback(
+    Output("editor-notification-container", "sendNotifications", allow_duplicate=True),
+    Input("editor-float", "value"),
+    State("editor-page-select", "value"),
+    prevent_initial_call=True,
+)
+def save_float_to_dataframe(float_pos, page):
+    """Save float position value directly to dataframe when it changes."""
+    from components import save_manual_adjustments
+    
+    if not isinstance(page, str) or not page:
+        return []
+    
+    float_pos = float_pos or "center"
+    
+    # Save to dataframe (use None if default value)
+    save_manual_adjustments(page=page, float_pos=float_pos if float_pos != "center" else None)
+    return []
 
 @callback(
     Output("editor-rotation-angle", "value"),
@@ -324,60 +333,44 @@ def page_navigation(page, prev_clicks, next_clicks, shared_page, rotation, tb_ma
     Output("editor-left-right-margin", "value"),
     Output("editor-float", "value"),
     Output("editor-crop-switch", "checked"),
-    Output("editor-manual-bbox", "data", allow_duplicate=True),
-    Input("editor-manual-adjustments", "data"),
     Input("editor-page-select", "value"),
     Input("url", "pathname"),
     prevent_initial_call=True,
 )
-def load_manual_adjustments_for_page(manual_state, page_value, pathname):
-    """Load previously saved manual adjustments when a page is selected or navigation buttons are used."""
+def load_manual_adjustments_for_page(page_value, pathname):
+    """Load previously saved manual adjustments when a page is selected or navigation buttons are used.
+    
+    Reads directly from the dataframe in components.py.
+    """
     from dash import no_update, ctx
     from components import load_manual_adjustments
     
     # Only process if we're on the editor page
     if pathname != "/editor":
-        return no_update, no_update, no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update
     
-    manual_state = manual_state or {}
-    triggered_id = ctx.triggered_id
-    
-    # Determine the target page:
-    # - If page selector triggered this, use page_value directly
-    # - Otherwise, try current_page from state, fall back to page_value
-    if triggered_id == "editor-page-select":
-        target_page = page_value if isinstance(page_value, str) else None
-    else:
-        target_page = manual_state.get("current_page")
-        if not isinstance(target_page, str) or not target_page:
-            target_page = page_value if isinstance(page_value, str) else None
+    target_page = page_value if isinstance(page_value, str) else None
 
     if not isinstance(target_page, str) or not target_page:
-        return 0.0, 0.0, 0.0, "center", False, {}
+        return 0.0, 0.0, 0.0, "center", False
 
-    # Check if we have a snapshot in manual_state that matches the target page
-    snapshot = manual_state.get("last_loaded")
-    if isinstance(snapshot, dict) and snapshot.get("page") == target_page:
-        manual_values = snapshot
-    else:
-        # Load fresh values from the dataframe (includes fallback to initial setup values)
-        manual_values = load_manual_adjustments(target_page) or {}
+    # Load fresh values from the dataframe (includes fallback to initial setup values)
+    manual_values = load_manual_adjustments(target_page) or {}
 
     rotation = float(manual_values.get('rotation', 0.0) or 0.0)
     tb_margin = float(manual_values.get('tb_margin', 0.0) or 0.0)
     lr_margin = float(manual_values.get('lr_margin', 0.0) or 0.0)
     float_pos = manual_values.get('float_pos', "center") or "center"
-    crop_bbox = manual_values.get('manual_bbox') or manual_values.get('crop_bbox') or {}
+    crop_bbox = manual_values.get('crop_bbox') or {}
     crop_switch = bool(crop_bbox)
 
-    return rotation, tb_margin, lr_margin, float_pos, crop_switch, crop_bbox
+    return rotation, tb_margin, lr_margin, float_pos, crop_switch
 
 
 @callback(
     Output("editor-page-viewer", "figure"),
     Output("editor-info-container", "children"),
     Output("editor-loading-overlay", "visible", allow_duplicate=True),
-    Output("editor-manual-bbox", "data"),
     Input("editor-page-select", "value"),
     Input("editor-rotation-angle", "value"),
     Input("editor-top-bottom-margin", "value"),
@@ -386,16 +379,24 @@ def load_manual_adjustments_for_page(manual_state, page_value, pathname):
     Input("editor-crop-switch", "checked"),
     Input("editor-preview-switch", "checked"),
     Input("editor-page-viewer", "relayoutData"),
-    State("editor-manual-bbox", "data"),
     prevent_initial_call=True,
 )
 def update_editor_page(page, rotation, top_bottom_margin, 
-                       left_right_margin, float_position, crop_switch_checked, preview_switch_checked, relayout_data,
-                       manual_bbox):
-    """Update the editor page viewer with the selected page and any manual adjustments."""
-
-    manual_bbox = {} if manual_bbox is None else manual_bbox    
+                       left_right_margin, float_position, crop_switch_checked, preview_switch_checked, relayout_data):
+    """Update the editor page viewer with the selected page and any manual adjustments.
+    
+    Manual bbox is loaded from the dataframe and saved when a new rectangle is drawn.
+    """
+    from components import load_manual_adjustments, save_manual_adjustments
+    
     loading = False
+    
+    # Load manual_bbox from dataframe for the current page
+    manual_bbox = {}
+    if isinstance(page, str) and page:
+        manual_values = load_manual_adjustments(page) or {}
+        manual_bbox = manual_values.get('crop_bbox') or {}
+    
     if not isinstance(page, str):
         info = [
             dmc.Alert(
@@ -405,7 +406,7 @@ def update_editor_page(page, rotation, top_bottom_margin,
                 icon=DashIconify(icon="mdi:information"),
             )
         ]
-        return create_empty_figure(), info, loading, manual_bbox
+        return create_empty_figure(), info, loading
 
     # Validate rotation angle - must be numeric
     try:
@@ -414,7 +415,7 @@ def update_editor_page(page, rotation, top_bottom_margin,
         # If rotation is not numeric, use 0 as default
         rotation = 0
     
-
+    # Handle new bounding box drawn by user
     if crop_switch_checked and relayout_data and 'shapes' in relayout_data:
         # Check if a rectangle was drawn
         shapes = relayout_data.get('shapes', [])
@@ -422,12 +423,15 @@ def update_editor_page(page, rotation, top_bottom_margin,
             # Get the last drawn shape (rectangle)
             last_shape = shapes[-1]
             if last_shape.get('type') == 'rect':
-                manual_bbox = {
+                new_bbox = {
                     'x0': last_shape.get('x0'),
                     'y0': last_shape.get('y0'),
                     'x1': last_shape.get('x1'),
                     'y1': last_shape.get('y1')
                 }
+                # Save the new bbox to dataframe immediately
+                save_manual_adjustments(page=page, crop_bbox=new_bbox)
+                manual_bbox = new_bbox
     
     # Create figure with appropriate settings
     if preview_switch_checked:
@@ -533,7 +537,7 @@ def update_editor_page(page, rotation, top_bottom_margin,
                 bbox_info = "Draw a rectangle to define crop area"
         else:
             bbox_info = "Using automatic text boundary detection"
-        alert_message = "Rotation changes are applied in real-time. Toggle the crop switch to enable manual bounding box drawing. Manual adjustments will be automatically saved when you navigate to another page."
+        alert_message = "Rotation changes are applied in real-time. Toggle the crop switch to enable manual bounding box drawing. Manual adjustments are automatically saved as you make changes."
         alert_title = "Manual Mode"
         alert_color = "yellow"
         alert_icon = "mdi:pencil"
@@ -560,7 +564,7 @@ def update_editor_page(page, rotation, top_bottom_margin,
     
     info_card = dmc.Card(dmc.Group(info_content, gap="xs"))
     
-    return fig, info_card, False, manual_bbox
+    return fig, info_card, False
 
 
 @callback(
@@ -569,7 +573,6 @@ def update_editor_page(page, rotation, top_bottom_margin,
     Output("editor-left-right-margin", "value", allow_duplicate=True),
     Output("editor-float", "value", allow_duplicate=True),
     Output("editor-crop-switch", "checked", allow_duplicate=True),
-    Output("editor-manual-bbox", "data", allow_duplicate=True),
     Input("editor-reset-btn", "n_clicks"),
     State("editor-page-select", "value"),
     prevent_initial_call=True,
@@ -579,7 +582,7 @@ def reset_manual_adjustments(reset_clicks, page):
     from components import clear_manual_adjustments, load_manual_adjustments
     
     if not isinstance(page, str) or not page:
-        return 0.0, 0.0, 0.0, "center", False, {}
+        return 0.0, 0.0, 0.0, "center", False
     
     triggered_id = ctx.triggered_id
     
@@ -594,13 +597,13 @@ def reset_manual_adjustments(reset_clicks, page):
         tb_margin = float(manual_values.get('tb_margin', 0.0) or 0.0)
         lr_margin = float(manual_values.get('lr_margin', 0.0) or 0.0)
         float_pos = manual_values.get('float_pos', "center") or "center"
-        crop_bbox = manual_values.get('manual_bbox') or manual_values.get('crop_bbox') or {}
+        crop_bbox = manual_values.get('crop_bbox') or {}
         crop_switch = bool(crop_bbox)
         
-        return rotation, tb_margin, lr_margin, float_pos, crop_switch, crop_bbox
+        return rotation, tb_margin, lr_margin, float_pos, crop_switch
     
     # This shouldn't happen due to prevent_initial_call=True
-    return 0.0, 0.0, 0.0, "center", False, {}
+    return 0.0, 0.0, 0.0, "center", False
 
 
 @callback(
@@ -629,11 +632,22 @@ def update_editor_page_selector(shared_page, pathname, search):
     """Update page selector options when configuration changes or page is passed via URL."""
     from dash import no_update
     from urllib.parse import parse_qs
-    from components import get_pages_list, get_shared_page_state_image
+    from components import get_pages_list, get_shared_page_state_image, get_shared_page_state_last_active
     
     # Only update if we're on the editor page
     if pathname != "/editor":
         return no_update, no_update
+    
+    # Check if the editor is the last active page - if so, don't override the value
+    # as the navigation callback already handles page selection
+    last_active = get_shared_page_state_last_active(shared_page)
+    if last_active == "editor":
+        # Only update the data (page list), not the value
+        current_pages = get_pages_list()
+        if len(current_pages) <= 1:
+            return [{"value": "", "label": "No images found"}], no_update
+        page_data = [{"value": page, "label": page} for page in current_pages]
+        return page_data, no_update
     
     # Refresh the pages list from current configuration
     current_pages = get_pages_list()
