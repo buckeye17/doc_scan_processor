@@ -94,7 +94,29 @@ nav_bar_content = dmc.Stack([
         ),
         position="right"
     ),
-], gap="sm")
+    # Spacer to push export to bottom
+    dmc.Box(style={"flexGrow": 1}),
+    dmc.Tooltip(
+        label="Export PDF",
+        children=dmc.Anchor(
+            DashIconify(icon="fluent:document-arrow-down-24-filled", width=24),
+            href="/export",
+            underline=False,
+            style={
+                "padding": "12px",
+                "borderRadius": "8px",
+                "display": "flex",
+                "alignItems": "center",
+                "justifyContent": "center",
+                "color": "#666",
+                "width": "48px",
+                "height": "48px"
+            },
+            id="nav-export"
+        ),
+        position="right"
+    ),
+], gap="sm", style={"height": "100%"})
 
 # Main app layout with AppShell containing navbar and three-column layout
 app.layout = dmc.MantineProvider([
@@ -129,10 +151,12 @@ app.layout = dmc.MantineProvider([
      Output("nav-editor", "style"),
      Output("nav-setup", "style"),
      Output("nav-gallery", "style"),
+     Output("nav-export", "style"),
      Output("nav-viewer", "href"),
      Output("nav-editor", "href"),
      Output("nav-setup", "href"),
-     Output("nav-gallery", "href")],
+     Output("nav-gallery", "href"),
+     Output("nav-export", "href")],
     [Input("url", "pathname"),
      Input("shared-page-state", "data")]
 )
@@ -147,23 +171,24 @@ def update_navigation_styles(pathname, current_page):
         "width": "48px",
         "height": "48px"
     }
-    
+
     active_style = {
         "backgroundColor": "#e3f2fd",
         "color": "#1976d2"
     }
-    
+
     inactive_style = {
         "backgroundColor": "transparent",
         "color": "#666"
     }
-    
+
     # Initialize all styles as inactive
     viewer_style = {**base_style, **inactive_style}
     editor_style = {**base_style, **inactive_style}
     setup_style = {**base_style, **inactive_style}
     gallery_style = {**base_style, **inactive_style}
-    
+    export_style = {**base_style, **inactive_style}
+
     # Set active style based on pathname
     if pathname == "/editor":
         editor_style.update(active_style)
@@ -171,17 +196,20 @@ def update_navigation_styles(pathname, current_page):
         setup_style.update(active_style)
     elif pathname == "/gallery":
         gallery_style.update(active_style)
+    elif pathname == "/export":
+        export_style.update(active_style)
     elif pathname == "/":
         # Viewer is active (default)
         viewer_style.update(active_style)
-    
+
     # Create hrefs that preserve the current page
     viewer_href = "/"
     editor_href = "/editor"
     setup_href = "/setup"
     gallery_href = "/gallery"
-    
-    return viewer_style, editor_style, setup_style, gallery_style, viewer_href, editor_href, setup_href, gallery_href
+    export_href = "/export"
+
+    return viewer_style, editor_style, setup_style, gallery_style, export_style, viewer_href, editor_href, setup_href, gallery_href, export_href
 
 if __name__ == "__main__":
     app.run(debug=True)
